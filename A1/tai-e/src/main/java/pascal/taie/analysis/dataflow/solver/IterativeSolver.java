@@ -44,8 +44,7 @@ class IterativeSolver<Node, Fact> extends Solver<Node, Fact> {
         boolean inChanged = true;
         while (inChanged) {
             inChanged = false;
-            var topoSorter = new TopoSorter<Node>(cfg, true);
-            for (Node node : topoSorter.get()) {
+            for (Node node : cfg.getNodes()) {
                 Fact outFact = result.getOutFact(node);
                 for (Edge<Node> outEdge : cfg.getOutEdgesOf(node)) {
                     Node edgeOut = outEdge.getTarget();

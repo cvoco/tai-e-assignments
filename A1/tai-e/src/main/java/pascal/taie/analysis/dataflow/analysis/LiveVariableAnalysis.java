@@ -52,9 +52,8 @@ public class LiveVariableAnalysis extends
     }
 
     @Override
-    public SetFact<Var> newInitialFact() {{
-        var setFact = new SetFact<Var>();
-        return setFact;}
+    public SetFact<Var> newInitialFact() {
+        return new SetFact<Var>();
     }
 
     @Override
