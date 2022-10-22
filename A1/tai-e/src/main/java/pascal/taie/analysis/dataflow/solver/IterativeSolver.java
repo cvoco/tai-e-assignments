@@ -26,7 +26,6 @@ import pascal.taie.analysis.dataflow.analysis.DataflowAnalysis;
 import pascal.taie.analysis.dataflow.fact.DataflowResult;
 import pascal.taie.analysis.graph.cfg.CFG;
 import pascal.taie.analysis.graph.cfg.Edge;
-import pascal.taie.util.graph.TopoSorter;
 
 class IterativeSolver<Node, Fact> extends Solver<Node, Fact> {
 
