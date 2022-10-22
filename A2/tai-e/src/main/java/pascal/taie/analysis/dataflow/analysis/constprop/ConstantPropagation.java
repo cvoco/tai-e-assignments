@@ -102,21 +102,21 @@ public class ConstantPropagation extends
 
     @Override
     public boolean transferNode(Stmt stmt, CPFact in, CPFact out) {
-        boolean isChanged = false;
+        CPFact oldOut = out.copy();
         if (stmt instanceof DefinitionStmt<?, ?> definitionStmt) {
             var exp = (Exp) definitionStmt.getRValue();
             for (var entry : in.entries().toList()) {
                 var key = entry.getKey();
                 var value = entry.getValue();
-                isChanged |= out.update(key, value);
+                out.update(key, value);
             }
             var var = (Var) definitionStmt.getLValue();
             Value value = evaluate(exp, in);
             if (value != null) {
-                isChanged |= out.update(var, value);
+                out.update(var, value);
             }
         }
-        return isChanged;
+        return !oldOut.equals(out);
     }
 
     /**
