@@ -104,11 +104,16 @@ public class ConstantPropagation extends
     public boolean transferNode(Stmt stmt, CPFact in, CPFact out) {
         CPFact oldOut = out.copy();
         if (stmt instanceof DefinitionStmt<?, ?> definitionStmt) {
+            var def = (Var) definitionStmt.getLValue();
             var exp = (Exp) definitionStmt.getRValue();
             for (var entry : in.entries().toList()) {
-                var key = entry.getKey();
-                var value = entry.getValue();
-                out.update(key, value);
+                Var key = entry.getKey();
+                if (!key.equals(def)) {
+                    Value value = entry.getValue();
+                    if (!value.isNAC()) {
+                        out.update(key, value);
+                    }
+                }
             }
             var var = (Var) definitionStmt.getLValue();
             Value value = evaluate(exp, in);
