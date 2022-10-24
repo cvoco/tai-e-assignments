@@ -120,6 +120,12 @@ public class ConstantPropagation extends
             if (value != null) {
                 out.update(var, value);
             }
+        } else {
+            for (var entry : in.entries().toList()) {
+                Var var = entry.getKey();
+                Value value = entry.getValue();
+                out.update(var, value);
+            }
         }
         return !oldOut.equals(out);
     }
