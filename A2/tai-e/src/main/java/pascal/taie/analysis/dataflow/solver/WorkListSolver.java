@@ -38,9 +38,6 @@ class WorkListSolver<Node, Fact> extends Solver<Node, Fact> {
         while (isChanged) {
             isChanged = false;
             for (Node node : cfg.getNodes()) {
-                if (cfg.isExit(node)) {
-                    continue;
-                }
                 Fact inFact = result.getInFact(node);
                 for (Node outNode : cfg.getPredsOf(node)) {
                     Fact outFact = result.getOutFact(outNode);

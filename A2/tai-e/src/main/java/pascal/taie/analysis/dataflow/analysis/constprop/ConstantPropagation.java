@@ -56,7 +56,9 @@ public class ConstantPropagation extends
     public CPFact newBoundaryFact(CFG<Stmt> cfg) {
         CPFact fact = new CPFact();
         for (Var var : cfg.getIR().getVars()) {
-            fact.update(var, Value.getNAC());
+            if (canHoldInt(var)) {
+                fact.update(var, Value.getNAC());
+            }
         }
         return fact;
     }
@@ -103,29 +105,22 @@ public class ConstantPropagation extends
     @Override
     public boolean transferNode(Stmt stmt, CPFact in, CPFact out) {
         CPFact oldOut = out.copy();
-        if (stmt instanceof DefinitionStmt<?, ?> definitionStmt) {
-            var def = (Var) definitionStmt.getLValue();
-            var exp = (Exp) definitionStmt.getRValue();
-            for (var entry : in.entries().toList()) {
-                Var key = entry.getKey();
-                if (!key.equals(def)) {
-                    Value value = entry.getValue();
-                    if (!value.isNAC()) {
-                        out.update(key, value);
-                    }
+        if (stmt instanceof DefinitionStmt<?, ?> definitionStmt) { // x = y
+            // IN[s] – {(x, _)}
+            var x = (Var) definitionStmt.getLValue();
+            var y = (Exp) definitionStmt.getRValue();
+            in.forEach((k, v) -> {
+                if (!k.equals(x)) {
+                    out.update(k, v);
                 }
-            }
-            var var = (Var) definitionStmt.getLValue();
-            Value value = evaluate(exp, in);
+            });
+            // gen = {(x, eval(y))}
+            Value value = evaluate(y, in);
             if (value != null) {
-                out.update(var, value);
+                out.update(x, value);
             }
         } else {
-            for (var entry : in.entries().toList()) {
-                Var var = entry.getKey();
-                Value value = entry.getValue();
-                out.update(var, value);
-            }
+            in.forEach((k, v) -> out.update(k, v));
         }
         return !oldOut.equals(out);
     }
@@ -156,80 +151,80 @@ public class ConstantPropagation extends
      * @return the resulting {@link Value}
      */
     public static Value evaluate(Exp exp, CPFact in) {
-        if (exp instanceof Var var) {
-            return in.get(var);
-        }
-        if (exp instanceof IntLiteral intLiteral) {
+        if (exp instanceof IntLiteral intLiteral) { // x = c
             return Value.makeConstant(intLiteral.getValue());
         }
-        if (exp instanceof BinaryExp binaryExp) {
-            Value lValue = in.get(binaryExp.getOperand1());
-            Value rValue = in.get(binaryExp.getOperand2());
-            if (lValue.isConstant() && rValue.isConstant()) {
-                int lConst = lValue.getConstant();
-                int rConst = rValue.getConstant();
-                int oConst = evaluateBinaryExp(binaryExp, lConst, rConst);
-                return Value.makeConstant(oConst);
+        if (exp instanceof Var var) { // x = y
+            return in.get(var);
+        }
+        if (exp instanceof BinaryExp binaryExp) { // x = y op z
+            Value y = in.get(binaryExp.getOperand1());
+            Value z = in.get(binaryExp.getOperand2());
+            if (y.isConstant() && z.isConstant()) { // both constants
+                int yConst = y.getConstant();
+                int zConst = z.getConstant();
+                var op = binaryExp.getOperator();
+                int value = evaluateOp(op, yConst, zConst);
+                return Value.makeConstant(value); // val(y) op val(z)
             }
-            if (lValue.isNAC() || rValue.isNAC()) {
-                return Value.getNAC();
+            if (y.isNAC() || z.isNAC()) { // any NAC
+                return Value.getNAC(); // NAC
             }
-            return Value.getUndef();
+            // otherwise
+            return Value.getUndef(); // UNDEF
         }
         return null;
     }
 
-    private static int evaluateBinaryExp(BinaryExp binaryExp, int lhs, int rhs) {
-        if (binaryExp instanceof ArithmeticExp arithmeticExp) {
-            switch (arithmeticExp.getOperator()) {
+    private static int evaluateOp(BinaryExp.Op op, int y, int z) {
+        if (op instanceof ArithmeticExp.Op arithmeticOp) {
+            switch (arithmeticOp) {
                 case ADD:
-                    return lhs + rhs;
+                    return y + z;
                 case DIV:
-                    return lhs / rhs;
+                    return y / z;
                 case MUL:
-                    return lhs * rhs;
+                    return y * z;
                 case REM:
-                    return lhs % rhs;
+                    return y % z;
                 case SUB:
-                    return lhs - rhs;
+                    return y - z;
             }
         }
-        if (binaryExp instanceof ConditionExp conditionExp) {
-            switch (conditionExp.getOperator()) {
+        if (op instanceof ConditionExp.Op conditionOp) {
+            switch (conditionOp) {
                 case EQ:
-                    return lhs == rhs ? 1 : 0;
+                    return y == z ? 1 : 0;
                 case GE:
-                    return lhs >= rhs ? 1 : 0;
+                    return y >= z ? 1 : 0;
                 case GT:
-                    return lhs > rhs ? 1 : 0;
+                    return y > z ? 1 : 0;
                 case LE:
-                    return lhs <= rhs ? 1 : 0;
+                    return y <= z ? 1 : 0;
                 case LT:
-                    return lhs < rhs ? 1 : 0;
+                    return y < z ? 1 : 0;
                 case NE:
-                    return lhs != rhs ? 1 : 0;
+                    return y != z ? 1 : 0;
             }
         }
-        if (binaryExp instanceof ShiftExp shiftExp) {
-            switch (shiftExp.getOperator()) {
+        if (op instanceof ShiftExp.Op shiftOp) {
+            switch (shiftOp) {
                 case SHL:
-                    return lhs << rhs;
+                    return y << z;
                 case SHR:
-                    return lhs >> rhs;
+                    return y >> z;
                 case USHR:
-                    return lhs >>> rhs;
+                    return y >>> z;
             }
         }
-        if (binaryExp instanceof BitwiseExp bitwiseExp) {
-            switch (bitwiseExp.getOperator()) {
+        if (op instanceof BitwiseExp.Op bitwiseOp) {
+            switch (bitwiseOp) {
                 case AND:
-                    return lhs & rhs;
+                    return y & z;
                 case OR:
-                    return lhs | rhs;
+                    return y | z;
                 case XOR:
-                    return lhs ^ rhs;
-                default:
-                    break;
+                    return y ^ z;
             }
         }
         return Integer.MIN_VALUE; // unreachable
