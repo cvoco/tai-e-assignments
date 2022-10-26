@@ -164,6 +164,12 @@ public class ConstantPropagation extends
                 int yConst = y.getConstant();
                 int zConst = z.getConstant();
                 var op = binaryExp.getOperator();
+                // div/rem 0
+                if (op == ArithmeticExp.Op.DIV || op == ArithmeticExp.Op.REM) {
+                    if (zConst == 0) {
+                        return Value.getNAC();
+                    }
+                }
                 int value = evaluateOp(op, yConst, zConst);
                 return Value.makeConstant(value); // val(y) op val(z)
             }
@@ -173,7 +179,7 @@ public class ConstantPropagation extends
             // otherwise
             return Value.getUndef(); // UNDEF
         }
-        return null;
+        return Value.getNAC(); // other unsolvable situations
     }
 
     private static int evaluateOp(BinaryExp.Op op, int y, int z) {
