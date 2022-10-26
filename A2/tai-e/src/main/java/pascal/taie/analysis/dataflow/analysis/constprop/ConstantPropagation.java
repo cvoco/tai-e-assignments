@@ -55,7 +55,7 @@ public class ConstantPropagation extends
     @Override
     public CPFact newBoundaryFact(CFG<Stmt> cfg) {
         CPFact fact = new CPFact();
-        for (Var var : cfg.getIR().getVars()) {
+        for (Var var : cfg.getIR().getParams()) {
             if (canHoldInt(var)) {
                 fact.update(var, Value.getNAC());
             }
