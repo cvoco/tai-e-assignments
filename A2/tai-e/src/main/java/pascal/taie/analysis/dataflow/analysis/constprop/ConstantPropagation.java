@@ -169,7 +169,7 @@ public class ConstantPropagation extends
                 // div/rem 0
                 if (op == ArithmeticExp.Op.DIV || op == ArithmeticExp.Op.REM) {
                     if (zConst == 0) {
-                        return Value.getNAC();
+                        return Value.getUndef();
                     }
                 }
                 int value = evaluateOp(op, yConst, zConst);
