@@ -162,16 +162,21 @@ public class ConstantPropagation extends
         if (exp instanceof BinaryExp binaryExp) { // x = y op z
             Value y = in.get(binaryExp.getOperand1());
             Value z = in.get(binaryExp.getOperand2());
-            if (y.isConstant() && z.isConstant()) { // both constants
-                int yConst = y.getConstant();
+            var op = binaryExp.getOperator();
+
+            // div/rem 0
+            if (z.isConstant()) {
                 int zConst = z.getConstant();
-                var op = binaryExp.getOperator();
-                // div/rem 0
                 if (op == ArithmeticExp.Op.DIV || op == ArithmeticExp.Op.REM) {
                     if (zConst == 0) {
                         return Value.getUndef();
                     }
                 }
+            }
+
+            if (y.isConstant() && z.isConstant()) { // both constants
+                int yConst = y.getConstant();
+                int zConst = z.getConstant();
                 int value = evaluateOp(op, yConst, zConst);
                 return Value.makeConstant(value); // val(y) op val(z)
             }
