@@ -22,6 +22,11 @@
 
 package pascal.taie.analysis.dataflow.solver;
 
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Queue;
+
 import pascal.taie.analysis.dataflow.analysis.DataflowAnalysis;
 import pascal.taie.analysis.dataflow.fact.DataflowResult;
 import pascal.taie.analysis.graph.cfg.CFG;
@@ -34,17 +39,19 @@ class WorkListSolver<Node, Fact> extends Solver<Node, Fact> {
 
     @Override
     protected void doSolveForward(CFG<Node> cfg, DataflowResult<Node, Fact> result) {
-        boolean isChanged = true;
-        while (isChanged) {
-            isChanged = false;
-            for (Node node : cfg.getNodes()) {
-                Fact inFact = result.getInFact(node);
-                for (Node outNode : cfg.getPredsOf(node)) {
-                    Fact outFact = result.getOutFact(outNode);
-                    analysis.meetInto(outFact, inFact);
-                }
-                Fact outFact = result.getOutFact(node);
-                isChanged |= analysis.transferNode(node, inFact, outFact);
+        Queue<Node> queue = new LinkedList<>();
+        queue.addAll(cfg.getNodes());
+        while (!queue.isEmpty()) {
+            var node = queue.poll();
+            Fact inFact = result.getInFact(node);
+            for (Node outNode : cfg.getPredsOf(node)) {
+                Fact outFact = result.getOutFact(outNode);
+                analysis.meetInto(outFact, inFact);
+            }
+            Fact outFact = result.getOutFact(node);
+            boolean isChanged = analysis.transferNode(node, inFact, outFact);
+            if (isChanged) {
+                queue.addAll(cfg.getSuccsOf(node));
             }
         }
     }
