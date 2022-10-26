@@ -70,13 +70,14 @@ public class ConstantPropagation extends
 
     @Override
     public void meetInto(CPFact fact, CPFact target) {
-        fact.entries().forEach((entry) -> {
-            Var key = entry.getKey();
-            Value factValue = entry.getValue();
-            Value targetValue = target.get(key);
-            // it will be OK even if target is undef
-            Value value = meetValue(factValue, targetValue);
-            target.update(key, value);
+        fact.forEach((key, factValue) -> {
+            if (canHoldInt(key)) {
+                Value targetValue = target.get(key);
+                // it will be OK even if target is undef
+                Value value = meetValue(factValue, targetValue);
+                assert value != null;
+                target.update(key, value);
+            }
         });
     }
 
@@ -104,25 +105,26 @@ public class ConstantPropagation extends
 
     @Override
     public boolean transferNode(Stmt stmt, CPFact in, CPFact out) {
-        CPFact oldOut = out.copy();
+        boolean isChanged = false;
         if (stmt instanceof DefinitionStmt<?, ?> definitionStmt) { // x = y
+            var x = definitionStmt.getLValue();
             // IN[s] – {(x, _)}
-            var x = (Var) definitionStmt.getLValue();
-            var y = (Exp) definitionStmt.getRValue();
-            in.forEach((k, v) -> {
-                if (!k.equals(x)) {
-                    out.update(k, v);
+            for (var key : in.keySet()) {
+                if (!key.equals(x)) {
+                    var value = in.get(key);
+                    isChanged |= out.update(key, value);
                 }
-            });
-            // gen = {(x, eval(y))}
-            Value value = evaluate(y, in);
-            if (value != null) {
-                out.update(x, value);
+            }
+            if (x instanceof Var var && canHoldInt(var)) {
+                var exp = (Exp) definitionStmt.getRValue();
+                // gen = {(x, eval(y))}
+                Value value = evaluate(exp, in);
+                isChanged |= out.update(var, value);
             }
         } else {
-            in.forEach((k, v) -> out.update(k, v));
+            isChanged |= out.copyFrom(in);
         }
-        return !oldOut.equals(out);
+        return isChanged;
     }
 
     /**
