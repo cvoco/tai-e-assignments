@@ -110,11 +110,13 @@ public class DeadCodeDetection extends MethodAnalysis {
                 }
             } else {
                 if (stmt instanceof AssignStmt<?, ?> assignStmt) {
-                    var lValue = (Var) assignStmt.getLValue();
-                    if (!liveVars.getResult(stmt).contains(lValue)) {
-                        var rValue = assignStmt.getRValue();
-                        if (DeadCodeDetection.hasNoSideEffect(rValue)) {
-                            deadCode.add(stmt);
+                    var lValue = assignStmt.getLValue();
+                    if (lValue instanceof Var var) {
+                        if (!liveVars.getResult(stmt).contains(var)) {
+                            var rValue = assignStmt.getRValue();
+                            if (DeadCodeDetection.hasNoSideEffect(rValue)) {
+                                deadCode.add(stmt);
+                            }
                         }
                     }
                 }
