@@ -20,10 +20,12 @@
  * License along with Tai-e. If not, see <https://www.gnu.org/licenses/>.
  */
 
+
 package pascal.taie.analysis.dataflow.solver;
 
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.Stack;
 
 import pascal.taie.analysis.dataflow.analysis.DataflowAnalysis;
 import pascal.taie.analysis.dataflow.fact.DataflowResult;
@@ -56,10 +58,10 @@ class WorkListSolver<Node, Fact> extends Solver<Node, Fact> {
 
     @Override
     protected void doSolveBackward(CFG<Node> cfg, DataflowResult<Node, Fact> result) {
-        Queue<Node> queue = new LinkedList<>();
-        queue.addAll(cfg.getNodes());
-        while (!queue.isEmpty()) {
-            var node = queue.poll();
+        Stack<Node> stack = new Stack<>();
+        stack.addAll(cfg.getNodes());
+        while (!stack.isEmpty()) {
+            var node = stack.pop();
             Fact outFact = result.getOutFact(node);
             for (Node outNode : cfg.getSuccsOf(node)) {
                 Fact inFact = result.getInFact(outNode);
@@ -68,7 +70,7 @@ class WorkListSolver<Node, Fact> extends Solver<Node, Fact> {
             Fact inFact = result.getInFact(node);
             boolean isChanged = analysis.transferNode(node, inFact, outFact);
             if (isChanged) {
-                queue.addAll(cfg.getSuccsOf(node));
+                stack.addAll(cfg.getSuccsOf(node));
             }
         }
     }
