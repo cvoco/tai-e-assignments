@@ -22,6 +22,12 @@
 
 package pascal.taie.analysis.dataflow.analysis;
 
+import java.util.Comparator;
+import java.util.LinkedList;
+import java.util.Queue;
+import java.util.Set;
+import java.util.TreeSet;
+
 import pascal.taie.analysis.MethodAnalysis;
 import pascal.taie.analysis.dataflow.analysis.constprop.CPFact;
 import pascal.taie.analysis.dataflow.analysis.constprop.ConstantPropagation;
@@ -45,10 +51,6 @@ import pascal.taie.ir.stmt.If;
 import pascal.taie.ir.stmt.Stmt;
 import pascal.taie.ir.stmt.SwitchStmt;
 
-import java.util.Comparator;
-import java.util.Set;
-import java.util.TreeSet;
-
 public class DeadCodeDetection extends MethodAnalysis {
 
     public static final String ID = "deadcode";
@@ -62,14 +64,68 @@ public class DeadCodeDetection extends MethodAnalysis {
         // obtain CFG
         CFG<Stmt> cfg = ir.getResult(CFGBuilder.ID);
         // obtain result of constant propagation
-        DataflowResult<Stmt, CPFact> constants =
-                ir.getResult(ConstantPropagation.ID);
+        DataflowResult<Stmt, CPFact> constants = ir.getResult(ConstantPropagation.ID);
         // obtain result of live variable analysis
-        DataflowResult<Stmt, SetFact<Var>> liveVars =
-                ir.getResult(LiveVariableAnalysis.ID);
+        DataflowResult<Stmt, SetFact<Var>> liveVars = ir.getResult(LiveVariableAnalysis.ID);
         // keep statements (dead code) sorted in the resulting set
         Set<Stmt> deadCode = new TreeSet<>(Comparator.comparing(Stmt::getIndex));
-        // TODO - finish me
+        Set<Stmt> liveCode = new TreeSet<>(Comparator.comparing(Stmt::getIndex));
+        Queue<Stmt> queue = new LinkedList<>();
+        queue.offer(cfg.getEntry());
+        while (!queue.isEmpty()) {
+            Stmt stmt = queue.poll();
+            if (deadCode.contains(stmt) || !liveCode.add(stmt)) {
+                continue;
+            }
+            if (stmt instanceof If ifStmt) {
+                var condition = ifStmt.getCondition();
+                Value conditionValue = ConstantPropagation.evaluate(condition, constants.getInFact(stmt));
+                if (conditionValue.isConstant()) {
+                    int conditionConst = conditionValue.getConstant();
+                    for (var edge : cfg.getOutEdgesOf(ifStmt)) {
+                        if ((edge.getKind() == Edge.Kind.IF_TRUE) == (conditionConst != 0)) {
+                            Stmt target = edge.getTarget();
+                            queue.add(target);
+                        }
+                    }
+                } else {
+                    queue.addAll(cfg.getSuccsOf(stmt));
+                }
+            } else if (stmt instanceof SwitchStmt switchStmt) {
+                Var switchVar = switchStmt.getVar();
+                Value switchValue = ConstantPropagation.evaluate(switchVar, constants.getInFact(stmt));
+                if (switchValue.isConstant()) {
+                    int switchConst = switchValue.getConstant();
+                    var caseValues = switchStmt.getCaseValues();
+                    var caseIndex = caseValues.indexOf(switchConst);
+                    if (caseIndex == -1) { // no match case
+                        Stmt defaultStmt = switchStmt.getDefaultTarget();
+                        queue.add(defaultStmt);
+                    } else { // match case
+                        var caseStmt = switchStmt.getTarget(caseIndex);
+                        queue.add(caseStmt);
+                    }
+                } else {
+                    queue.addAll(cfg.getSuccsOf(stmt));
+                }
+            } else {
+                if (stmt instanceof AssignStmt<?, ?> assignStmt) {
+                    var lValue = (Var) assignStmt.getLValue();
+                    if (!liveVars.getResult(stmt).contains(lValue)) {
+                        var rValue = assignStmt.getRValue();
+                        if (DeadCodeDetection.hasNoSideEffect(rValue)) {
+                            deadCode.add(stmt);
+                        }
+                    }
+                }
+                queue.addAll(cfg.getSuccsOf(stmt));
+            }
+        }
+        for (var stmt : cfg) {
+            if (!liveCode.contains(stmt) && !cfg.isExit(stmt)) {
+                deadCode.add(stmt);
+            }
+        }
         // Your task is to recognize dead code in ir and add it to deadCode
         return deadCode;
     }
@@ -80,7 +136,7 @@ public class DeadCodeDetection extends MethodAnalysis {
     private static boolean hasNoSideEffect(RValue rvalue) {
         // new expression modifies the heap
         if (rvalue instanceof NewExp ||
-                // cast may trigger ClassCastException
+        // cast may trigger ClassCastException
                 rvalue instanceof CastExp ||
                 // static field access may trigger class initialization
                 // instance field access may trigger NPE
