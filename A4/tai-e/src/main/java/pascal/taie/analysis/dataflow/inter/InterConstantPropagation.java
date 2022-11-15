@@ -22,9 +22,12 @@
 
 package pascal.taie.analysis.dataflow.inter;
 
+import java.util.Collection;
+import java.util.List;
+
 import pascal.taie.analysis.dataflow.analysis.constprop.CPFact;
 import pascal.taie.analysis.dataflow.analysis.constprop.ConstantPropagation;
-import pascal.taie.analysis.graph.cfg.CFG;
+import pascal.taie.analysis.dataflow.analysis.constprop.Value;
 import pascal.taie.analysis.graph.cfg.CFGBuilder;
 import pascal.taie.analysis.graph.icfg.CallEdge;
 import pascal.taie.analysis.graph.icfg.CallToReturnEdge;
@@ -76,37 +79,63 @@ public class InterConstantPropagation extends
 
     @Override
     protected boolean transferCallNode(Stmt stmt, CPFact in, CPFact out) {
-        // TODO - finish me
-        return false;
+        return out.copyFrom(in);
     }
 
     @Override
     protected boolean transferNonCallNode(Stmt stmt, CPFact in, CPFact out) {
-        // TODO - finish me
-        return false;
+        return cp.transferNode(stmt, in, out);
     }
 
     @Override
     protected CPFact transferNormalEdge(NormalEdge<Stmt> edge, CPFact out) {
-        // TODO - finish me
-        return null;
+        return out.copy();
     }
 
     @Override
     protected CPFact transferCallToReturnEdge(CallToReturnEdge<Stmt> edge, CPFact out) {
-        // TODO - finish me
-        return null;
+        var callSite = (Invoke) edge.getSource();
+        Var var = callSite.getLValue();
+        CPFact fact = out.copy();
+        if (var != null) {
+            fact.remove(var);
+        }
+        return fact;
     }
 
     @Override
     protected CPFact transferCallEdge(CallEdge<Stmt> edge, CPFact callSiteOut) {
-        // TODO - finish me
-        return null;
+        var invoke = (Invoke) edge.getSource();
+        InvokeExp invokeExp = invoke.getInvokeExp();
+        JMethod callee = edge.getCallee();
+        List<Var> argList = invokeExp.getArgs();
+        List<Var> paramList = callee.getIR().getParams();
+        var calleeInFact = new CPFact();
+        for (int i = 0; i < paramList.size(); i++) {
+            Var param = paramList.get(i);
+            Var arg = argList.get(i);
+            if (ConstantPropagation.canHoldInt(param)) {
+                Value outValue = callSiteOut.get(arg);
+                calleeInFact.update(param, outValue);
+            }
+        }
+        return calleeInFact;
     }
 
     @Override
     protected CPFact transferReturnEdge(ReturnEdge<Stmt> edge, CPFact returnOut) {
-        // TODO - finish me
-        return null;
+        var invoke = (Invoke) edge.getCallSite();
+        Var result = invoke.getResult();
+        CPFact invokeOut = new CPFact();
+        if (result != null) {
+            Collection<Var> returnVars = edge.getReturnVars();
+            for (Var returnVar : returnVars) {
+                Value invokeValue = invokeOut.get(returnVar);
+                Value returnValue = returnOut.get(returnVar);
+                Value value = cp.meetValue(invokeValue, returnValue);
+                invokeOut.update(result, value);
+            }
+        }
+        return invokeOut;
     }
 }
