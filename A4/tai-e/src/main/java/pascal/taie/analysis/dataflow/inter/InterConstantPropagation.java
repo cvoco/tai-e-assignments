@@ -130,7 +130,7 @@ public class InterConstantPropagation extends
         if (result != null) {
             Collection<Var> returnVars = edge.getReturnVars();
             for (Var returnVar : returnVars) {
-                Value invokeValue = invokeOut.get(returnVar);
+                Value invokeValue = invokeOut.get(result);
                 Value returnValue = returnOut.get(returnVar);
                 Value value = cp.meetValue(invokeValue, returnValue);
                 invokeOut.update(result, value);
