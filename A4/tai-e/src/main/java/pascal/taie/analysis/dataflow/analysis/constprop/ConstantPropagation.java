@@ -25,7 +25,6 @@ package pascal.taie.analysis.dataflow.analysis.constprop;
 import pascal.taie.analysis.dataflow.analysis.AbstractDataflowAnalysis;
 import pascal.taie.analysis.graph.cfg.CFG;
 import pascal.taie.config.AnalysisConfig;
-import pascal.taie.ir.IR;
 import pascal.taie.ir.exp.ArithmeticExp;
 import pascal.taie.ir.exp.BinaryExp;
 import pascal.taie.ir.exp.BitwiseExp;
@@ -38,7 +37,6 @@ import pascal.taie.ir.stmt.DefinitionStmt;
 import pascal.taie.ir.stmt.Stmt;
 import pascal.taie.language.type.PrimitiveType;
 import pascal.taie.language.type.Type;
-import pascal.taie.util.AnalysisException;
 
 public class ConstantPropagation extends
         AbstractDataflowAnalysis<Stmt, CPFact> {
@@ -56,33 +54,77 @@ public class ConstantPropagation extends
 
     @Override
     public CPFact newBoundaryFact(CFG<Stmt> cfg) {
-        // TODO - finish me
-        return null;
+        CPFact fact = new CPFact();
+        for (Var var : cfg.getIR().getParams()) {
+            if (canHoldInt(var)) {
+                fact.update(var, Value.getNAC());
+            }
+        }
+        return fact;
     }
 
     @Override
     public CPFact newInitialFact() {
-        // TODO - finish me
-        return null;
+        return new CPFact();
     }
 
     @Override
     public void meetInto(CPFact fact, CPFact target) {
-        // TODO - finish me
+        fact.forEach((key, factValue) -> {
+            if (canHoldInt(key)) {
+                Value targetValue = target.get(key);
+                // it will be OK even if target is undef
+                Value value = meetValue(factValue, targetValue);
+                assert value != null;
+                target.update(key, value);
+            }
+        });
     }
 
     /**
      * Meets two Values.
      */
     public Value meetValue(Value v1, Value v2) {
-        // TODO - finish me
-        return null;
+        if (v1.isNAC() || v2.isNAC()) {
+            return Value.getNAC();
+        }
+        if (v1.isUndef()) {
+            return v2;
+        }
+        if (v2.isUndef()) {
+            return v1;
+        }
+        if (v1.isConstant() && v2.isConstant()) {
+            if (v1.getConstant() != v2.getConstant()) {
+                return Value.getNAC();
+            }
+            return v1;
+        }
+        return null; // unreachable
     }
 
     @Override
     public boolean transferNode(Stmt stmt, CPFact in, CPFact out) {
-        // TODO - finish me
-        return false;
+        boolean isChanged = false;
+        if (stmt instanceof DefinitionStmt<?, ?> definitionStmt) { // x = y
+            var x = definitionStmt.getLValue();
+            // IN[s] – {(x, _)}
+            for (var key : in.keySet()) {
+                if (!key.equals(x)) {
+                    var value = in.get(key);
+                    isChanged |= out.update(key, value);
+                }
+            }
+            if (x instanceof Var var && canHoldInt(var)) {
+                var exp = (Exp) definitionStmt.getRValue();
+                // gen = {(x, eval(y))}
+                Value value = evaluate(exp, in);
+                isChanged |= out.update(var, value);
+            }
+        } else {
+            isChanged |= out.copyFrom(in);
+        }
+        return isChanged;
     }
 
     /**
@@ -111,7 +153,93 @@ public class ConstantPropagation extends
      * @return the resulting {@link Value}
      */
     public static Value evaluate(Exp exp, CPFact in) {
-        // TODO - finish me
-        return null;
+        if (exp instanceof IntLiteral intLiteral) { // x = c
+            return Value.makeConstant(intLiteral.getValue());
+        }
+        if (exp instanceof Var var) { // x = y
+            return in.get(var);
+        }
+        if (exp instanceof BinaryExp binaryExp) { // x = y op z
+            Value y = in.get(binaryExp.getOperand1());
+            Value z = in.get(binaryExp.getOperand2());
+            var op = binaryExp.getOperator();
+
+            // div/rem 0
+            if (z.isConstant()) {
+                int zConst = z.getConstant();
+                if (op == ArithmeticExp.Op.DIV || op == ArithmeticExp.Op.REM) {
+                    if (zConst == 0) {
+                        return Value.getUndef();
+                    }
+                }
+            }
+
+            if (y.isConstant() && z.isConstant()) { // both constants
+                int yConst = y.getConstant();
+                int zConst = z.getConstant();
+                int value = evaluateOp(op, yConst, zConst);
+                return Value.makeConstant(value); // val(y) op val(z)
+            }
+            if (y.isNAC() || z.isNAC()) { // any NAC
+                return Value.getNAC(); // NAC
+            }
+            // otherwise
+            return Value.getUndef(); // UNDEF
+        }
+        return Value.getNAC(); // other unsolvable situations
+    }
+
+    private static int evaluateOp(BinaryExp.Op op, int y, int z) {
+        if (op instanceof ArithmeticExp.Op arithmeticOp) {
+            switch (arithmeticOp) {
+                case ADD:
+                    return y + z;
+                case DIV:
+                    return y / z;
+                case MUL:
+                    return y * z;
+                case REM:
+                    return y % z;
+                case SUB:
+                    return y - z;
+            }
+        }
+        if (op instanceof ConditionExp.Op conditionOp) {
+            switch (conditionOp) {
+                case EQ:
+                    return y == z ? 1 : 0;
+                case GE:
+                    return y >= z ? 1 : 0;
+                case GT:
+                    return y > z ? 1 : 0;
+                case LE:
+                    return y <= z ? 1 : 0;
+                case LT:
+                    return y < z ? 1 : 0;
+                case NE:
+                    return y != z ? 1 : 0;
+            }
+        }
+        if (op instanceof ShiftExp.Op shiftOp) {
+            switch (shiftOp) {
+                case SHL:
+                    return y << z;
+                case SHR:
+                    return y >> z;
+                case USHR:
+                    return y >>> z;
+            }
+        }
+        if (op instanceof BitwiseExp.Op bitwiseOp) {
+            switch (bitwiseOp) {
+                case AND:
+                    return y & z;
+                case OR:
+                    return y | z;
+                case XOR:
+                    return y ^ z;
+            }
+        }
+        return Integer.MIN_VALUE; // unreachable
     }
 }
